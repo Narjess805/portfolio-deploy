@@ -1,0 +1,6 @@
+---
+app_name:    portfolio
+app_version: main
+app_user:    deploy
+app_port:    3000
+app_dir:     "/opt/{{ app_name }}"

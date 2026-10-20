@@ -1,0 +1,11 @@
+---
+app_name:          portfolio
+app_repo:          "https://github.com/Narjess805/portfolio.git"
+app_version:       main
+app_user:          deploy
+app_port:          3000
+app_dir:           "/opt/{{ app_name }}"
+node_major:        "20"
+pm2_app_name:      "{{ app_name }}"
+nginx_server_name: "_"
+nginx_listen_port: 8000

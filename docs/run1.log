@@ -1,0 +1,72 @@
+
+PLAY [Déploiement du portfolio Next.js] ****************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [portfolio]
+
+TASK [Vérifier la connectivité] ************************************************
+ok: [portfolio]
+
+TASK [common : Mettre à jour le cache APT] *************************************
+ok: [portfolio]
+
+TASK [common : Installer les paquets de base] **********************************
+ok: [portfolio]
+
+TASK [common : Créer l'utilisateur applicatif] *********************************
+ok: [portfolio]
+
+TASK [common : Autoriser sudo sans mot de passe] *******************************
+ok: [portfolio]
+
+TASK [nodejs : Ajouter le dépôt NodeSource] ************************************
+ok: [portfolio]
+
+TASK [nodejs : Installer Node.js] **********************************************
+ok: [portfolio]
+
+TASK [nodejs : Installer PM2 globalement] **************************************
+ok: [portfolio]
+
+TASK [app : Créer le répertoire applicatif] ************************************
+ok: [portfolio]
+
+TASK [app : Récupérer / mettre à jour le dépôt Git] ****************************
+ok: [portfolio]
+
+TASK [app : Installer les dépendances Node] ************************************
+ok: [portfolio]
+
+TASK [app : Déployer la configuration PM2] *************************************
+ok: [portfolio]
+
+TASK [app : Vérifier que PM2 voit l'application] *******************************
+ok: [portfolio]
+
+TASK [app : Démarrer l'application si absente] *********************************
+skipping: [portfolio]
+
+TASK [app : Sauvegarder la liste PM2] ******************************************
+ok: [portfolio]
+
+TASK [nginx : Installer Nginx] *************************************************
+ok: [portfolio]
+
+TASK [nginx : Déployer la configuration du vhost] ******************************
+ok: [portfolio]
+
+TASK [nginx : Activer le vhost] ************************************************
+ok: [portfolio]
+
+TASK [nginx : Désactiver le site par défaut] ***********************************
+ok: [portfolio]
+
+TASK [nginx : S'assurer que Nginx tourne] **************************************
+ok: [portfolio]
+
+TASK [Vérifier que l'application répond] ***************************************
+ok: [portfolio]
+
+PLAY RECAP *********************************************************************
+portfolio                  : ok=21   changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   
+

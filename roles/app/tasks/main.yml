@@ -1,0 +1,54 @@
+---
+- name: Créer le répertoire applicatif
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0755"
+
+- name: Récupérer / mettre à jour le dépôt Git
+  ansible.builtin.git:
+    repo: "{{ app_repo }}"
+    dest: "{{ app_dir }}"
+    version: "{{ app_version }}"
+    force: true
+    accept_hostkey: true
+  become_user: "{{ app_user }}"
+  notify: Build and reload app
+
+- name: Installer les dépendances Node
+  community.general.npm:
+    path: "{{ app_dir }}"
+    ci: true
+    state: present
+  become_user: "{{ app_user }}"
+  changed_when: false
+
+- name: Déployer la configuration PM2
+  ansible.builtin.template:
+    src: ecosystem.config.js.j2
+    dest: "{{ app_dir }}/ecosystem.config.js"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0644"
+  notify: Build and reload app
+
+- name: Vérifier que PM2 voit l'application
+  ansible.builtin.command: pm2 describe {{ pm2_app_name }}
+  become_user: "{{ app_user }}"
+  register: pm2_status
+  changed_when: false
+  failed_when: false
+
+- name: Démarrer l'application si absente
+  ansible.builtin.command: pm2 start ecosystem.config.js --env production
+  args:
+    chdir: "{{ app_dir }}"
+  become_user: "{{ app_user }}"
+  when: pm2_status.rc != 0
+
+- name: Sauvegarder la liste PM2
+  ansible.builtin.command: pm2 save
+  become_user: "{{ app_user }}"
+  changed_when: false

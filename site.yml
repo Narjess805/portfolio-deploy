@@ -1,0 +1,26 @@
+---
+- name: Déploiement du portfolio Next.js
+  hosts: web
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Vérifier la connectivité
+      ansible.builtin.ping:
+
+  roles:
+    - common
+    - nodejs
+    - app
+    - nginx
+
+  post_tasks:
+    - name: Vérifier que l'application répond
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ nginx_listen_port }}/"
+        status_code: 200
+      retries: 6
+      delay: 5
+      register: check
+      until: check.status == 200
+      changed_when: false

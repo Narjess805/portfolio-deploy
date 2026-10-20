@@ -1,0 +1,9 @@
+---
+- name: Build and reload app
+  ansible.builtin.shell: |
+    npm run build
+    pm2 reload {{ pm2_app_name }} --update-env
+  args:
+    chdir: "{{ app_dir }}"
+    executable: /bin/bash
+  become_user: "{{ app_user }}"

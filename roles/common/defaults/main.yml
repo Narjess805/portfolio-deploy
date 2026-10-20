@@ -1,0 +1,9 @@
+---
+common_packages:
+  - curl
+  - git
+  - ca-certificates
+  - gnupg
+  - ufw
+  - unzip
+  - rsync

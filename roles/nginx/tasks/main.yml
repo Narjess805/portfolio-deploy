@@ -1,0 +1,31 @@
+---
+- name: Installer Nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+
+- name: Déployer la configuration du vhost
+  ansible.builtin.template:
+    src: portfolio.conf.j2
+    dest: /etc/nginx/sites-available/{{ app_name }}.conf
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Activer le vhost
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/{{ app_name }}.conf
+    dest: /etc/nginx/sites-enabled/{{ app_name }}.conf
+    state: link
+  notify: Reload nginx
+
+- name: Désactiver le site par défaut
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: S'assurer que Nginx tourne
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

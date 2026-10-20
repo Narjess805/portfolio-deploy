@@ -1,0 +1,21 @@
+---
+- name: Ajouter le dépôt NodeSource
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://deb.nodesource.com/setup_{{ node_major }}.x | bash -
+  args:
+    executable: /bin/bash
+    creates: /etc/apt/sources.list.d/nodesource.list
+  changed_when: false
+
+- name: Installer Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true
+
+- name: Installer PM2 globalement
+  community.general.npm:
+    name: pm2
+    global: true
+    state: present

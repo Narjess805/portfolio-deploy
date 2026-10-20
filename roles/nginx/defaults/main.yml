@@ -1,0 +1,4 @@
+---
+nginx_listen_port: 80
+nginx_server_name: "_"
+app_port: 3000
