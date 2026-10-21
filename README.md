@@ -1,275 +1,259 @@
-<div align="center">
+# TP1 : Déploiement d'un Portfolio Next.js avec Ansible et Semaphore UI
 
-# Mini-projet 1 : Application web à deux niveaux sur Kubernetes (K3s)
+Déploiement automatisé et idempotent d'un portfolio Next.js sur un serveur Ubuntu, avec un playbook Ansible structuré en rôles, puis industrialisation de son exécution avec Semaphore UI.
 
-Déploiement, exposition via Ingress, mise à jour sans coupure et diagnostic de panne
-
-![Kubernetes](https://img.shields.io/badge/Kubernetes-K3s-326CE5?logo=kubernetes&logoColor=white)
-![K3s](https://img.shields.io/badge/K3s-Lightweight-FFC61C?logo=rancher&logoColor=black)
-![Traefik](https://img.shields.io/badge/Ingress-Traefik-24A1C1?logo=traefikproxy&logoColor=white)
-![Nginx](https://img.shields.io/badge/Frontend-Nginx-009639?logo=nginx&logoColor=white)
-![Status](https://img.shields.io/badge/Statut-Termin%C3%A9-success)
-
-</div>
+**Dépôt applicatif :** [`Narjess805/portfolio`](https://github.com/Narjess805/portfolio)
+**Dépôt de déploiement :** [`Narjess805/portfolio-deploy`](https://github.com/Narjess805/portfolio-deploy)
 
 ---
 
-## Table des matières
+## Sommaire
 
-1. [Contexte et objectifs](#1-contexte-et-objectifs)
-2. [Architecture](#2-architecture)
-3. [Structure du dépôt](#3-structure-du-dépôt)
-4. [Prérequis](#4-prérequis)
-5. [Guide de déploiement](#5-guide-de-déploiement)
-6. [Preuves d'exécution](#6-preuves-dexécution)
-7. [Questions de réflexion](#7-questions-de-réflexion)
-8. [Difficultés rencontrées](#8-difficultés-rencontrées)
-9. [Nettoyage](#9-nettoyage)
-10. [Auteur](#10-auteur)
+1. [Objectifs pédagogiques](#1-objectifs-pédagogiques)
+2. [Prérequis et environnement](#2-prérequis-et-environnement)
+3. [Architecture cible](#3-architecture-cible)
+4. [Partie A : Playbook Ansible](#4-partie-a--playbook-ansible-ligne-de-commande)
+5. [Partie B : Industrialisation avec Semaphore UI](#5-partie-b--industrialisation-avec-semaphore-ui)
+6. [Livrables](#6-livrables)
+7. [Adaptations et difficultés rencontrées](#7-adaptations-et-difficultés-rencontrées)
+8. [Conclusion](#8-conclusion)
 
 ---
 
-## 1. Contexte et objectifs
+## 1. Objectifs pédagogiques
 
-Ce dépôt contient les manifestes YAML et la documentation du **Mini-projet 1**.
+- Écrire un playbook Ansible **idempotent**, structuré en **rôles**.
+- Automatiser le déploiement d'une application Next.js sur un serveur Linux.
+- Industrialiser l'exécution avec **Semaphore UI** (inventaire, dépôt, clés, templates).
 
-L'objectif est de déployer une application à deux niveaux (un frontend et une API) sur un cluster Kubernetes léger (K3s) et de :
+---
 
-- faire communiquer les deux composants **en interne** via des Services ;
-- les **exposer à l'extérieur** grâce à un Ingress Traefik ;
-- démontrer une **mise à jour sans coupure** (Rolling Update) ;
-- réaliser un **diagnostic de panne** (`ImagePullBackOff`).
+## 2. Prérequis et environnement
 
-## 2. Architecture
+| Élément | Détail |
+|---|---|
+| Serveur cible | `devsecops-vm` (Ubuntu), IP `192.168.56.10`, accès SSH par clé (utilisateur `deploy`) |
+| Poste de contrôle | Ansible 2.17, Git |
+| Semaphore UI | Instance Docker, accessible sur le port `3001` |
+| Application | Portfolio Next.js, dépôt `Narjess805/portfolio` |
 
-| Composant | Technologie | Réplicas | Service |
-|-----------|-------------|:--------:|---------|
-| Frontend  | Nginx       | 2        | `frontend-svc` (ClusterIP) |
-| API       | Podinfo     | 3        | `api-svc` (ClusterIP) |
-| Routage   | Ingress Traefik | n/a  | `web.k3s.local` et `api.k3s.local` |
+### Vérifications de l'environnement
 
-**Namespace** : `projet-narjess`
+![Arborescence du projet](captures/00-arborescence.png)
+*Arborescence du projet de déploiement.*
 
-```mermaid
-flowchart LR
-    U([Client]) -->|web.k3s.local| I{{Ingress Traefik}}
-    U -->|api.k3s.local| I
-    I --> FS[frontend-svc]
-    I --> AS[api-svc]
-    FS --> F1[Nginx Pod 1]
-    FS --> F2[Nginx Pod 2]
-    AS --> A1[Podinfo Pod 1]
-    AS --> A2[Podinfo Pod 2]
-    AS --> A3[Podinfo Pod 3]
-    F1 -.->|api-svc:9898| AS
-    F2 -.->|api-svc:9898| AS
+![Versions des outils](captures/01-versions-outils.png)
+*Versions des outils installés (Ansible, Git, Docker…).*
+
+![Test SSH et sudo](captures/02-ssh-cible.png)
+*Connexion SSH par clé et `sudo` fonctionnel sur la cible.*
+
+---
+
+## 3. Architecture cible
+
+```
+Semaphore UI ──► Dépôt Git (portfolio-deploy)
+      │
+      └──► Ansible ──► Serveur cible (192.168.56.10)
+                          ├── Node.js 20 + PM2 (application Next.js, port 3000)
+                          └── Nginx (reverse proxy, port 8000)
 ```
 
-## 3. Structure du dépôt
+Le flux : Semaphore récupère le dépôt Git, exécute Ansible, qui configure le serveur (Node.js, application via PM2, Nginx en reverse proxy).
 
-```text
-.
-├── README.md                      # Documentation du projet
-├── manifests/                     # Manifestes Kubernetes
-│   ├── api-deployment.yaml        # Deployment de l'API (Podinfo)
-│   ├── frontend-deployment.yaml   # Deployment du Frontend (Nginx)
-│   ├── services.yaml              # Services ClusterIP (api-svc, frontend-svc)
-│   └── ingress.yaml               # Ingress pour l'accès externe
-└── captures/                      # Captures d'écran du projet
-    ├── 00_namespace.png
-    ├── 01_api_pods.png
-    ├── 02_frontend_pods.png
-    ├── 03_services_communication.png
-    ├── 04_ingress.png
-    ├── 05_rolling_update.png
-    ├── 06_diagnostic.png
-    └── 07_nettoyage.png
+---
+
+## 4. Partie A : Playbook Ansible (ligne de commande)
+
+### 4.1 Structure du projet
+
+```
+portfolio-deploy/
+├── ansible.cfg
+├── inventory/
+├── group_vars/
+├── site.yml
+├── requirements.yml
+└── roles/
+    ├── common/
+    ├── nodejs/
+    ├── app/
+    └── nginx/
 ```
 
-## 4. Prérequis
+![Fichiers racine](captures/04-fichiers-racine.png)
+*Fichiers racine du projet : `ansible.cfg`, `site.yml`, `requirements.yml`.*
 
-- Un cluster **K3s** fonctionnel (au moins 1 master et 1 worker)
-- `kubectl` configuré sur votre machine
-- **Traefik** installé (inclus par défaut avec K3s)
+![Dépôt avant Ansible](captures/05-avant-ansible-repo.png)
+*État du dépôt avant l'ajout du code Ansible.*
 
-## 5. Guide de déploiement
+![Dépôt GitHub](captures/05b-repo-github.png)
+*Dépôt `portfolio-deploy` créé sur GitHub.*
 
-### 5.1 Déployer l'application
+![Inventaire](captures/05-inventaire.png)
+*Inventaire des hôtes cibles.*
 
-Depuis la racine du dépôt :
+### 4.2 Rôles et responsabilités
+
+| # | Rôle | Tâches réalisées | Modules utilisés |
+|---|---|---|---|
+| 1 | `common` | Mise à jour du cache apt, installation de `git`, `curl`, `build-essential`, création de l'utilisateur `deploy`, `sudo` sans mot de passe | `apt`, `user` |
+| 2 | `nodejs` | Ajout du dépôt NodeSource, installation de Node.js 20 et de PM2 | `get_url`, `apt`, `npm` |
+| 3 | `app` | Clone du dépôt dans `/opt/portfolio`, `npm ci`, `npm run build`, démarrage via PM2 | `git`, `command`, `shell` |
+| 4 | `nginx` | Installation, vhost via template Jinja2 (`proxy_pass` vers l'application), activation du site | `apt`, `template`, `file`, `service` |
+
+**Contraintes respectées :**
+
+- Le redémarrage de l'application n'a lieu que si le code a changé (**handler + `notify`**).
+- Le rechargement de Nginx passe par un **handler**.
+- Aucune valeur en dur : les paramètres sont centralisés dans `group_vars/all.yml`.
+
+![Rôle common](captures/06-role-common.png)
+*Rôle `common`.*
+
+![Rôle nodejs](captures/07-role-nodejs.png)
+*Rôle `nodejs`.*
+
+![Rôle app](captures/08-role-app.png)
+*Rôle `app`.*
+
+![Rôle nginx](captures/09-role-nginx.png)
+*Rôle `nginx`.*
+
+### 4.3 Validation
 
 ```bash
-kubectl create namespace projet-narjess
-kubectl config set-context --current --namespace=projet-narjess
-kubectl apply -f manifests/
+ansible-playbook -i inventory/hosts.ini site.yml --syntax-check
+ansible-playbook -i inventory/hosts.ini site.yml --check --diff
+ansible-playbook -i inventory/hosts.ini site.yml        # 1er run
+ansible-playbook -i inventory/hosts.ini site.yml        # 2e run
 ```
 
-### 5.2 Vérifier le déploiement
+**Préparation de la cible**
 
-```bash
-# Pods en état Running et nœuds d'exécution
-kubectl get pods -o wide
+![Préparation de la cible](captures/10-prep-cible.png)
+*Préparation de la VM avant le premier déploiement.*
 
-# Services et endpoints associés
-kubectl get services
-kubectl get endpoints
+**1er run : déploiement complet**
 
-# Ingress et adresse attribuée
-kubectl get ingress
-```
+![Run 1 : tâches](captures/11-run1-tasks.png)
+*Exécution des tâches du premier run.*
 
-### 5.3 Tester l'accès externe
+![Run 1 : récapitulatif](captures/12-run1-recap.png)
+*Récapitulatif du premier run : les changements sont appliqués.*
 
-Ajoutez l'IP du nœud master dans le fichier `hosts` de votre machine :
+**2e run : preuve d'idempotence**
 
-```text
-192.168.56.20  web.k3s.local api.k3s.local
-```
+Critère de réussite : la 2ᵉ exécution affiche `changed=0`.
 
-| Système | Emplacement du fichier `hosts` |
-|---------|--------------------------------|
-| Linux / macOS | `/etc/hosts` |
-| Windows | `C:\Windows\System32\drivers\etc\hosts` (éditeur lancé en administrateur) |
+![Idempotence](captures/idempotence.png)
+*Récapitulatif du 2ᵉ run : `changed=0`, le playbook est idempotent.*
 
-Puis accédez aux applications :
+**Vérifications post-déploiement**
 
-| Application | URL |
-|-------------|-----|
-| Frontend | http://web.k3s.local |
-| API | http://api.k3s.local |
+| Vérification | Résultat attendu |
+|---|---|
+| Réponse HTTP de l'application | `HTTP 200` |
+| Rendu dans le navigateur | Portfolio affiché |
+| Processus PM2 | Application `online` |
+| Service Nginx | `active (running)` |
 
-```bash
-curl http://web.k3s.local
-curl http://api.k3s.local
-```
+![Test curl](captures/14-curl-app.png)
+*L'application répond en HTTP 200.*
 
-### 5.4 Mise à jour sans coupure et rollback
+![Portfolio déployé](captures/portfolio.png)
+*Portfolio visible dans le navigateur.*
 
-```bash
-# Mise à jour de l'image (remplacer <nouveau-tag>)
-kubectl set image deployment/<nom-deployment> <conteneur>=<image>:<nouveau-tag>
+![Statut PM2](captures/16-pm2-list.png)
+*Statut PM2 : application `online`.*
 
-# Suivi de la mise à jour
-kubectl rollout status deployment/<nom-deployment>
+![Statut Nginx](captures/17-nginx-status.png)
+*Statut Nginx : `active (running)`.*
 
-# Historique et ReplicaSets
-kubectl rollout history deployment/<nom-deployment>
-kubectl get rs
+**Checklist de la partie A**
 
-# Retour arrière si nécessaire
-kubectl rollout undo deployment/<nom-deployment>
-```
+- [x] `--syntax-check` OK
+- [x] 1ʳᵉ exécution sans erreur
+- [x] 2ᵉ exécution : `changed=0`
+- [x] Portfolio visible dans le navigateur
 
-### 5.5 Diagnostic d'une panne
+---
 
-```bash
-kubectl get pods
-kubectl describe pod <nom-du-pod>
-kubectl get events --sort-by=.metadata.creationTimestamp
-kubectl logs <nom-du-pod>
-```
+## 5. Partie B : Industrialisation avec Semaphore UI
 
-## 6. Preuves d'exécution
+### 5.1 Configuration
 
-### 6.1 Création du Namespace
+| Étape | Menu Semaphore | Paramètres |
+|---|---|---|
+| 1 | Projects → New | Projet `portfolio-deploy` |
+| 2 | Key Store | Clé SSH d'accès au serveur |
+| 3 | Repositories | URL du dépôt, branche, clé d'accès |
+| 4 | Inventory | Inventaire statique (même contenu que `hosts.ini`), clé SSH associée |
+| 5 | Variable Groups | Variables d'environnement (format JSON) |
+| 6 | Task Templates | Playbook `site.yml`, Inventory, Repository, Variable Group |
 
-![Création du namespace](captures/00_namespace.png)
+![Connexion à Semaphore](captures/03-semaphore-login.png)
+*Connexion à Semaphore et création du projet.*
 
-### 6.2 Déploiement de l'API (3 réplicas)
+![Key Store](captures/18-semaphore-key.png)
+*Key Store : clé SSH de déploiement.*
 
-![Pods de l'API](captures/01_api_pods.png)
+![Inventory](captures/19-semaphore-inventory.png)
+*Inventory : hôte cible.*
 
-### 6.3 Déploiement du Frontend (2 réplicas)
+![Repository](captures/20-semaphore-repo.png)
+*Repository : dépôt Git du projet Ansible.*
 
-![Pods du Frontend](captures/02_frontend_pods.png)
+![Variable Group](captures/21-semaphore-env.png)
+*Variable Group : variables d'environnement.*
 
-### 6.4 Communication interne (Frontend vers API)
+![Template Semaphore](captures/semaphore-template.png)
+*Task Template configuré.*
 
-![Communication entre services](captures/03_services_communication.png)
+### 5.2 Exécution et vérification
 
-### 6.5 Exposition avec Ingress
+![Exécution en cours](captures/23-semaphore-running.png)
+*Exécution du template, logs en direct.*
 
-![Ingress Traefik](captures/04_ingress.png)
+![Exécution réussie](captures/semaphore-run.png)
+*Exécution réussie depuis l'interface.*
 
-### 6.6 Mise à jour sans coupure (Rolling Update)
+![Historique des tâches](captures/25-semaphore-history.png)
+*Historique des tâches exécutées.*
 
-![Rolling Update](captures/05_rolling_update.png)
+---
 
-### 6.7 Diagnostic de panne
+## 6. Livrables
 
-![Diagnostic de panne](captures/06_diagnostic.png)
+| Livrable | Statut |
+|---|---|
+| Dépôt Git avec les rôles complétés et ce README adapté | ✅ |
+| `captures/semaphore-template.png` | ✅ |
+| `captures/semaphore-run.png` | ✅ |
+| `captures/portfolio.png` | ✅ |
+| `captures/idempotence.png` (2ᵉ run à `changed=0`) | ✅ |
+| Rapport d'une page (`RAPPORT.md`) | à rédiger |
 
-### 6.8 Nettoyage
+---
 
-![Nettoyage des ressources](captures/07_nettoyage.png)
+## 7. Adaptations et difficultés rencontrées
 
-## 7. Questions de réflexion
-
-<details>
-<summary><strong>Étape 0 : Pourquoi isoler un projet dans un namespace ?</strong></summary>
-
-Le namespace isole les ressources (Pods, Services, etc.) afin d'éviter les conflits de noms, de faciliter la gestion des droits (RBAC) et de cibler plus simplement les commandes.
-</details>
-
-<details>
-<summary><strong>Étape 1 : Sur quels nœuds les Pods sont-ils répartis, et qui a pris cette décision ?</strong></summary>
-
-Les Pods sont répartis sur les différents nœuds (master et workers). C'est le **Scheduler** de Kubernetes qui décide, en fonction des ressources disponibles et des contraintes de placement.
-</details>
-
-<details>
-<summary><strong>Étape 2 : Que se passerait-il si les deux Deployments utilisaient exactement les mêmes labels ?</strong></summary>
-
-Les Services ne sauraient plus quels Pods cibler. Le Service `frontend-svc` pourrait envoyer du trafic vers l'API (et inversement), ce qui provoquerait un dysfonctionnement complet.
-</details>
-
-<details>
-<summary><strong>Étape 3 : Quel est le nom DNS complet d'un Service ?</strong></summary>
-
-Le FQDN a la forme `<service>.<namespace>.svc.cluster.local`.
-Exemple : `api-svc.projet-narjess.svc.cluster.local`.
-</details>
-
-<details>
-<summary><strong>Étape 4 : Pourquoi préférer un Ingress à deux Services NodePort ?</strong></summary>
-
-L'Ingress fournit un point d'entrée unique (ports 80/443) avec routage par nom d'hôte et par chemin. Avec des NodePort, il faut ouvrir un port distinct par application, ce qui est moins lisible et moins sécurisé.
-</details>
-
-<details>
-<summary><strong>Étape 5 : Combien de ReplicaSets existent après la mise à jour, et pourquoi l'ancien est-il conservé ?</strong></summary>
-
-Il y a **2 ReplicaSets** : l'ancien (0 réplica) et le nouveau (3 réplicas). L'ancien est conservé pour permettre un rollback rapide avec `kubectl rollout undo` en cas de problème.
-</details>
-
-<details>
-<summary><strong>Étape 6 : Quels symptômes ont mis sur la piste, et quelle est la cause racine ?</strong></summary>
-
-- **Symptômes** : les Pods restent en `ErrImagePull` puis `ImagePullBackOff`.
-- **Cause racine** : le tag d'image indiqué dans le manifeste n'existe pas sur le registre (GHCR), Kubernetes ne peut donc pas télécharger l'image.
-</details>
-
-## 8. Difficultés rencontrées
+| Sujet | Énoncé | Réalisé | Raison |
+|---|---|---|---|
+| Port de Nginx | 80 | 8000 | Jenkins occupait déjà le port 80 sur la VM |
+| Port de Semaphore | 3000 | 3001 | Éviter le conflit avec le port 3000 de l'application |
 
 | Problème | Cause | Solution |
-|----------|-------|----------|
-| Endpoints à `<none>` | Les labels du Service ne correspondent pas à ceux du Deployment | Aligner `selector` du Service et `labels` du Pod template |
-| Rolling update lent | Téléchargement des images depuis Internet | Vérifier la connectivité et préchauffer les images |
-| `hosts` non pris en compte (Windows) | Fichier édité sans droits administrateur ou enregistré avec une extension | Éditer en administrateur et enregistrer sans extension |
+|---|---|---|
+| Hôte injoignable depuis Semaphore avec `localhost` | Dans un conteneur Docker, `localhost` désigne le conteneur et non la VM hôte | Utiliser l'IP de la VM (`192.168.56.10`) dans l'inventaire |
+| Clé SSH non trouvée par Semaphore | Le conteneur ne voit pas les fichiers de l'hôte | Enregistrer la clé dans le **Key Store** de Semaphore |
 
-## 9. Nettoyage
+---
 
-```bash
-kubectl delete -f manifests/
-kubectl delete namespace projet-narjess
-```
+## 8. Conclusion
 
-## 10. Auteur
-
-| | |
-|---|---|
-| **Nom** | Dabbech |
-| **Prénom** | Narjess |
-| **Classe** | M2 DevOps |
-| **GitHub** | [@Narjess805](https://github.com/Narjess805) |
-| **Date** | Octobre 2026 |
+- **Idempotence** : démontrée par `changed=0` au second run.
+- **Modularité** : quatre rôles distincts, conformes aux bonnes pratiques Ansible.
+- **Industrialisation** : passage de la ligne de commande à une interface web avec gestion centralisée des clés, des inventaires et des variables.
+- **Diagnostic réseau** : différence entre `localhost` dans un conteneur et sur l'hôte, gestion des conflits de ports.
